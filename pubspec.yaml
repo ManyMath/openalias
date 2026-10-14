@@ -1,0 +1,9 @@
+name: openalias
+description: Pure Dart OpenAlias TXT record parser and recipient selector.
+version: 0.0.1
+repository: https://github.com/cypherstack/openalias
+environment:
+  sdk: ">=3.5.0 <4.0.0"
+dev_dependencies:
+  lints: ^4.0.0
+  test: ^1.25.0
