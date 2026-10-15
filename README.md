@@ -10,7 +10,6 @@ import 'package:openalias/openalias.dart';
 
 final resolver = OpenAliasResolver(
   resolver: txtResolver, // a ValidatingTxtResolver
-  trustedValidators: [DnssecResolver.validator],
   application: 'xmr',
   validateAddress: isValidMoneroAddress,
 );
@@ -26,18 +25,21 @@ exhaustive mappings, so callers never need to inspect message text.
 
 ## Trust model
 
-This package does no networking and no DNSSEC validation. `resolve` accepts a
-`TxtAnswer` only when its `question` is the normalized alias and its
-`validator` is `identical` to one of `trustedValidators`; the component that
-performed the validation sets `validator`, never glue code. `checksum` and
-`address_signature` are carried but not verified. `recipient_name` and
-`tx_description` are untrusted display text. Records whose
+This package does no networking and no DNSSEC validation. The injected
+`ValidatingTxtResolver` is a trusted port: it must return only locally
+authenticated answers and must throw for insecure, bogus, indeterminate,
+malformed, or unavailable validation. Supplying that resolver is the caller's
+trust decision; `TxtAnswer` is not independent proof. `resolve` still binds the
+answer's `question` to the normalized alias. `checksum` and `address_signature`
+are carried but not verified. `recipient_name` and `tx_description` are
+untrusted display text. Records whose
 `recipient_address` fails `validateAddress`, or that disagree about the
 address for the application, fail the lookup.
 
 ## Configuration
 
 - `application`: the `oa1:` prefix, such as `xmr`.
+- `resolver`: a trusted local DNSSEC-validating TXT resolver.
 - `validateAddress`: the wallet's address check. `validateRecord` adds field
   checks.
 - `selection`: `uniqueAddress` (default) requires one address across matching

@@ -13,7 +13,6 @@ void main() {
       const OpenAliasNoRecordException('missing'),
       const OpenAliasAmbiguousException('ambiguous'),
       const OpenAliasQuestionMismatchException('wrong question'),
-      const OpenAliasAuthenticationUnavailableException('untrusted'),
     ];
 
     expect(failures, everyElement(isA<OpenAliasException>()));

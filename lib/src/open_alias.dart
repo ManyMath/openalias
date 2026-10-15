@@ -10,7 +10,6 @@ enum OpenAliasError {
   noRecord,
   ambiguous,
   questionMismatch,
-  authenticationUnavailable
 }
 
 /// Every deliberately reported OpenAlias parsing, selection, or trust failure.
@@ -79,23 +78,12 @@ final class OpenAliasQuestionMismatchException extends OpenAliasException {
       : super(OpenAliasError.questionMismatch, message);
 }
 
-final class OpenAliasAuthenticationUnavailableException
-    extends OpenAliasException {
-  const OpenAliasAuthenticationUnavailableException(String message)
-      : super(OpenAliasError.authenticationUnavailable, message);
-}
-
 /// A TXT answer whose DNS character-strings have already been joined.
 final class TxtAnswer {
   final String question;
   final List<List<int>> records;
 
-  /// Set only by the component that performed the DNSSEC validation, never by
-  /// glue code; [OpenAliasResolver] accepts it by [identical] comparison with
-  /// its `trustedValidators`.
-  final Object? validator;
-  const TxtAnswer(
-      {required this.question, required this.records, required this.validator});
+  const TxtAnswer({required this.question, required this.records});
 }
 
 /// Resolves TXT records for a normalized DNS name.
@@ -103,7 +91,12 @@ abstract interface class TxtResolver {
   Future<TxtAnswer> lookupTxt(String name);
 }
 
-/// A TXT resolver that performs local DNSSEC validation.
+/// A trusted injected port that performs local DNSSEC validation.
+///
+/// Implementations must return only locally authenticated answers and must
+/// throw for insecure, bogus, indeterminate, malformed, or unavailable
+/// validation. Supplying an implementation is the caller's trust decision;
+/// [TxtAnswer] is not an independently verifiable proof object.
 abstract interface class ValidatingTxtResolver implements TxtResolver {}
 
 final _label = RegExp(r'^[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?$');
@@ -423,21 +416,14 @@ class OpenAliasResolver {
   final OpenAliasFieldValidator? validateRecord;
   final OpenAliasSelection selection;
   final bool allowPaymentId;
-  final List<Object> trustedValidators;
   OpenAliasResolver(
       {required this.resolver,
       required this.application,
       required this.validateAddress,
-      required Iterable<Object> trustedValidators,
       this.validateRecord,
       this.selection = OpenAliasSelection.uniqueAddress,
-      this.allowPaymentId = false})
-      : trustedValidators = List.unmodifiable(trustedValidators) {
+      this.allowPaymentId = false}) {
     _checkApplication(application);
-    if (this.trustedValidators.isEmpty) {
-      throw ArgumentError.value(
-          trustedValidators, 'trustedValidators', 'Must not be empty');
-    }
   }
 
   Future<OpenAliasRecipient> resolve(String input) async {
@@ -446,10 +432,6 @@ class OpenAliasResolver {
     if (result.question != domain) {
       throw const OpenAliasQuestionMismatchException(
           'The DNS result belongs to another alias.');
-    }
-    if (!trustedValidators.any((v) => identical(v, result.validator))) {
-      throw const OpenAliasAuthenticationUnavailableException(
-          'The DNS result is from an untrusted validator.');
     }
     if (result.records.length > 64) {
       throw OpenAliasLimitExceededException('Too many DNS records.',
