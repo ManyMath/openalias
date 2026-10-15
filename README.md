@@ -20,7 +20,9 @@ print(recipient.address);
 
 `normalizeOpenAlias` lowercases an alias and turns `user@domain` into
 `user.domain`. `parseOpenAliasRecord` and `selectOpenAliasRecipient` work on
-record strings without DNS.
+record strings without DNS. Deliberately reported failures are final named
+leaves of sealed `OpenAliasException`; its `code` remains typed metadata for
+exhaustive mappings, so callers never need to inspect message text.
 
 ## Trust model
 

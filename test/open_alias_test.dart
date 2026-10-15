@@ -11,7 +11,7 @@ OpenAliasRecipient select(List<String> records) => selectOpenAliasRecipient(
 
 void rejectPaymentId(OpenAliasRecord record) {
   if (record.fields['tx_payment_id']?.isNotEmpty ?? false) {
-    throw const OpenAliasException(OpenAliasError.unsupportedField,
+    throw const OpenAliasUnsupportedFieldException(
         'Separate payment IDs are unsupported');
   }
 }
