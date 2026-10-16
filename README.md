@@ -39,8 +39,8 @@ TXT records and deciding whether to trust them is the caller's job.
 
 ## Development
 
-`bash tool/check.sh` runs format, analyze, the tests, `pub publish --dry-run`
-and the example. No network access is needed.
+`dart tool/check.dart`, in the repository, runs format, analyze, tests and
+`pub publish --dry-run`.
 
 ## License
 
