@@ -1,73 +1,60 @@
-enum OpenAliasError {
-  invalidName,
-  invalidRecord,
-  limitExceeded,
-  duplicateField,
-  invalidAddress,
-  unsupportedField,
-  noRecord,
-  ambiguous,
-}
-
-/// Every deliberately reported OpenAlias parsing, selection, or trust failure.
+/// Every deliberately reported OpenAlias parsing or selection failure.
 ///
-/// Catch a final leaf for control flow. [code] is retained as typed metadata
-/// for telemetry and exhaustive mappings; callers never need to inspect
-/// [message] or [toString].
+/// Messages are developer diagnostics; map the leaf types to user-facing text.
 sealed class OpenAliasException implements Exception {
-  final OpenAliasError code;
   final String message;
-  const OpenAliasException(this.code, this.message);
+  final Object? cause;
+  final StackTrace? causeStackTrace;
+  const OpenAliasException(this.message, {this.cause, this.causeStackTrace});
 
   @override
-  String toString() => '$runtimeType(code: ${code.name}): $message';
+  String toString() => '$runtimeType: $message';
 }
 
 final class OpenAliasInvalidNameException extends OpenAliasException {
-  const OpenAliasInvalidNameException(String message)
-      : super(OpenAliasError.invalidName, message);
+  const OpenAliasInvalidNameException(super.message,
+      {super.cause, super.causeStackTrace});
 }
 
 final class OpenAliasInvalidRecordException extends OpenAliasException {
-  const OpenAliasInvalidRecordException(String message)
-      : super(OpenAliasError.invalidRecord, message);
+  const OpenAliasInvalidRecordException(super.message,
+      {super.cause, super.causeStackTrace});
+}
+
+final class OpenAliasDuplicateFieldException extends OpenAliasException {
+  const OpenAliasDuplicateFieldException(super.message,
+      {super.cause, super.causeStackTrace});
+}
+
+final class OpenAliasInvalidAddressException extends OpenAliasException {
+  const OpenAliasInvalidAddressException(super.message,
+      {super.cause, super.causeStackTrace});
+}
+
+final class OpenAliasUnsupportedFieldException extends OpenAliasException {
+  const OpenAliasUnsupportedFieldException(super.message,
+      {super.cause, super.causeStackTrace});
+}
+
+final class OpenAliasNoRecordException extends OpenAliasException {
+  const OpenAliasNoRecordException(super.message,
+      {super.cause, super.causeStackTrace});
+}
+
+final class OpenAliasAmbiguousException extends OpenAliasException {
+  const OpenAliasAmbiguousException(super.message,
+      {super.cause, super.causeStackTrace});
 }
 
 final class OpenAliasLimitExceededException extends OpenAliasException {
   final int? maximum;
   final int? actual;
-  const OpenAliasLimitExceededException(String message,
-      {this.maximum, this.actual})
-      : super(OpenAliasError.limitExceeded, message);
+  const OpenAliasLimitExceededException(super.message,
+      {this.maximum, this.actual, super.cause, super.causeStackTrace});
 
   @override
-  String toString() => '$runtimeType(code: ${code.name}, maximum: $maximum, '
-      'actual: $actual): $message';
-}
-
-final class OpenAliasDuplicateFieldException extends OpenAliasException {
-  const OpenAliasDuplicateFieldException(String message)
-      : super(OpenAliasError.duplicateField, message);
-}
-
-final class OpenAliasInvalidAddressException extends OpenAliasException {
-  const OpenAliasInvalidAddressException(String message)
-      : super(OpenAliasError.invalidAddress, message);
-}
-
-final class OpenAliasUnsupportedFieldException extends OpenAliasException {
-  const OpenAliasUnsupportedFieldException(String message)
-      : super(OpenAliasError.unsupportedField, message);
-}
-
-final class OpenAliasNoRecordException extends OpenAliasException {
-  const OpenAliasNoRecordException(String message)
-      : super(OpenAliasError.noRecord, message);
-}
-
-final class OpenAliasAmbiguousException extends OpenAliasException {
-  const OpenAliasAmbiguousException(String message)
-      : super(OpenAliasError.ambiguous, message);
+  String toString() =>
+      '$runtimeType(maximum: $maximum, actual: $actual): $message';
 }
 
 final _label = RegExp(r'^[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?$');
@@ -83,21 +70,23 @@ const _specialUseTlds = {
 };
 
 String normalizeOpenAlias(String input) {
-  const invalid = OpenAliasInvalidNameException(
-      'Enter a valid domain. Use punycode for international names.');
-  if (input.length > 1024) throw invalid;
+  if (input.length > 1024) {
+    throw const OpenAliasInvalidNameException(
+        'Invalid OpenAlias name: longer than 1024 characters');
+  }
   // Before trim(): it also strips U+00A0, U+FEFF, U+2028 and similar.
   if (input.codeUnits.any((code) => code > 0x7f)) {
     throw const OpenAliasInvalidNameException(
-        'Use punycode for international domain names.');
+        'Invalid OpenAlias name: non-ASCII input');
   }
   if (input.codeUnits.any((code) => code < 0x20 || code == 0x7f)) {
-    throw invalid;
+    throw const OpenAliasInvalidNameException(
+        'Invalid OpenAlias name: control character');
   }
   var name = input.trim().toLowerCase();
   if (name.split('@').length > 2) {
     throw const OpenAliasInvalidNameException(
-        'Enter a domain or an email-style OpenAlias.');
+        'Invalid OpenAlias name: more than one @');
   }
   name = name.replaceAll('@', '.');
   if (name.endsWith('.')) name = name.substring(0, name.length - 1);
@@ -107,7 +96,8 @@ String normalizeOpenAlias(String input) {
       !labels.every(_label.hasMatch) ||
       !_tld.hasMatch(labels.last) ||
       _specialUseTlds.contains(labels.last)) {
-    throw invalid;
+    throw const OpenAliasInvalidNameException(
+        'Invalid OpenAlias name: not a valid domain');
   }
   return name;
 }
@@ -194,11 +184,11 @@ OpenAliasRecord? parseOpenAliasRecord(String record, {String? application}) {
     return null;
   }
   if (record.length > 4096) {
-    throw OpenAliasLimitExceededException('The OpenAlias record is too large.',
+    throw OpenAliasLimitExceededException('OpenAlias record too large',
         maximum: 4096, actual: record.length);
   }
   const malformed =
-      OpenAliasInvalidRecordException('The OpenAlias record is malformed.');
+      OpenAliasInvalidRecordException('Malformed OpenAlias record');
   if (record.codeUnits.any(_forbidden)) throw malformed;
   final n = record.length;
   final fields = <String, String>{};
@@ -234,7 +224,7 @@ OpenAliasRecord? parseOpenAliasRecord(String record, {String? application}) {
     }
     if (!seen.add(key.toLowerCase())) {
       throw const OpenAliasDuplicateFieldException(
-          'Duplicate OpenAlias field.');
+          'Duplicate field in OpenAlias record');
     }
     i++;
     while (i < n && _blank(record.codeUnitAt(i))) {
@@ -332,7 +322,7 @@ OpenAliasRecipient selectOpenAliasRecipient(
     bool allowPaymentId = false}) {
   _checkApplication(application);
   if (records.length > 64) {
-    throw OpenAliasLimitExceededException('Too many DNS records.',
+    throw OpenAliasLimitExceededException('Too many OpenAlias records',
         maximum: 64, actual: records.length);
   }
   final parsed = <OpenAliasRecord>[];
@@ -344,33 +334,30 @@ OpenAliasRecipient selectOpenAliasRecipient(
   for (final record in parsed) {
     if (!allowPaymentId && (record.paymentId?.isNotEmpty ?? false)) {
       throw const OpenAliasUnsupportedFieldException(
-          'This alias requires a separate payment ID, which is not supported.');
+          'Unsupported field: tx_payment_id');
     }
     validateRecord?.call(record);
     final address = record.address;
     if (address == null || address.isEmpty || !validateAddress(address)) {
       // A publisher may also list another network's address under this app.
       if (parsed.length > 1) {
-        throw const OpenAliasAmbiguousException(
-            'The alias has multiple recipient addresses.');
+        throw const OpenAliasAmbiguousException('Multiple recipient addresses');
       }
       throw const OpenAliasInvalidAddressException(
-          'The alias contains an invalid address for this wallet.');
+          'Recipient address rejected by validateAddress');
     }
     final previous = candidates.putIfAbsent(address, () => record);
     if (!_sameFields(previous, record)) {
       throw const OpenAliasAmbiguousException(
-          'The alias has conflicting records for one address.');
+          'Conflicting records for one recipient address');
     }
     if (selection == OpenAliasSelection.first) break;
   }
   if (candidates.isEmpty) {
-    throw const OpenAliasNoRecordException(
-        'No matching OpenAlias record was found.');
+    throw const OpenAliasNoRecordException('No matching OpenAlias record');
   }
   if (candidates.length != 1) {
-    throw const OpenAliasAmbiguousException(
-        'The alias has multiple recipient addresses.');
+    throw const OpenAliasAmbiguousException('Multiple recipient addresses');
   }
   return OpenAliasRecipient(
       domain: domain,

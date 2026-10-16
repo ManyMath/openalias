@@ -2,7 +2,7 @@ import 'package:openalias/openalias.dart';
 import 'package:test/test.dart';
 
 void main() {
-  test('every error code has one named final exception leaf', () {
+  test('every leaf is a distinct final exception type', () {
     final failures = <OpenAliasException>[
       const OpenAliasInvalidNameException('invalid name'),
       const OpenAliasInvalidRecordException('invalid record'),
@@ -14,23 +14,31 @@ void main() {
       const OpenAliasAmbiguousException('ambiguous'),
     ];
 
-    expect(failures, everyElement(isA<OpenAliasException>()));
     expect(failures.map((failure) => failure.runtimeType).toSet(),
-        hasLength(OpenAliasError.values.length));
-    expect(failures.map((failure) => failure.code).toSet(),
-        OpenAliasError.values.toSet());
+        hasLength(failures.length));
+    expect(failures.map((failure) => failure.toString()),
+        contains('OpenAliasNoRecordException: missing'));
   });
 
-  test('structured limit fields and toString remain machine-independent', () {
+  test('cause is carried but never printed', () {
+    final trace = StackTrace.current;
+    final failure = OpenAliasInvalidRecordException('bad',
+        cause: StateError('secret-detail'), causeStackTrace: trace);
+
+    expect(failure.cause, isA<StateError>());
+    expect(failure.causeStackTrace, same(trace));
+    expect(failure.toString(), 'OpenAliasInvalidRecordException: bad');
+    expect(const OpenAliasAmbiguousException('x').cause, isNull);
+  });
+
+  test('limit fields and toString', () {
     const failure =
         OpenAliasLimitExceededException('too many', maximum: 64, actual: 65);
 
     expect(failure.maximum, 64);
     expect(failure.actual, 65);
-    expect(
-        failure.toString(),
-        'OpenAliasLimitExceededException(code: limitExceeded, maximum: 64, '
-        'actual: 65): too many');
+    expect(failure.toString(),
+        'OpenAliasLimitExceededException(maximum: 64, actual: 65): too many');
   });
 
   test('public operations report named leaves rather than a generic root', () {
