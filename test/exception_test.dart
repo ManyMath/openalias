@@ -12,7 +12,6 @@ void main() {
       const OpenAliasUnsupportedFieldException('unsupported'),
       const OpenAliasNoRecordException('missing'),
       const OpenAliasAmbiguousException('ambiguous'),
-      const OpenAliasQuestionMismatchException('wrong question'),
     ];
 
     expect(failures, everyElement(isA<OpenAliasException>()));
@@ -32,10 +31,6 @@ void main() {
         failure.toString(),
         'OpenAliasLimitExceededException(code: limitExceeded, maximum: 64, '
         'actual: 65): too many');
-    expect(
-        const OpenAliasQuestionMismatchException('wrong result').toString(),
-        'OpenAliasQuestionMismatchException(code: questionMismatch): '
-        'wrong result');
   });
 
   test('public operations report named leaves rather than a generic root', () {

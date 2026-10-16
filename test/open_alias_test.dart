@@ -18,6 +18,7 @@ void rejectPaymentId(OpenAliasRecord record) {
 
 void main() {
   parserTests();
+  selectorTests();
   test('normalizes email aliases, case and root dot', () {
     expect(normalizeOpenAlias(' Alice@Example. '), 'alice.example');
     expect(normalizeOpenAlias(' alice.example'), 'alice.example');
@@ -115,29 +116,29 @@ void main() {
     );
   }
   test('blames the alias only when its single address is invalid', () {
-    OpenAliasError code(List<String> records) {
+    Object? failure(List<String> records) {
       try {
         select(records);
       } on OpenAliasException catch (e) {
-        return e.code;
+        return e;
       }
       fail('expected an exception');
     }
 
-    expect(code(['oa1:xmr recipient_address=wrong-network;']),
-        OpenAliasError.invalidAddress);
+    expect(failure(['oa1:xmr recipient_address=wrong-network;']),
+        isA<OpenAliasInvalidAddressException>());
     expect(
-        code([
+        failure([
           'oa1:xmr recipient_address=valid;',
           'oa1:xmr recipient_address=wrong-network;',
         ]),
-        OpenAliasError.ambiguous);
+        isA<OpenAliasAmbiguousException>());
     expect(
-        code([
+        failure([
           'oa1:xmr recipient_address=wrong-network;',
           'oa1:xmr recipient_address=valid;',
         ]),
-        OpenAliasError.ambiguous);
+        isA<OpenAliasAmbiguousException>());
   });
   test('does not apply suggested amounts or names to recipient', () {
     final result = select([
@@ -251,6 +252,109 @@ void parserTests() {
       } on OpenAliasException catch (e) {
         expect(e.toString(), isNot(contains('secret')));
       }
+    });
+  });
+}
+
+OpenAliasRecipient selectWith(List<String> records,
+        {String application = 'xmr',
+        bool allowPaymentId = false,
+        OpenAliasSelection selection = OpenAliasSelection.uniqueAddress}) =>
+    selectOpenAliasRecipient(
+        domain: 'alice.example',
+        application: application,
+        records: records,
+        validateAddress: (a) => a == 'valid' || a == 'second' || a == 'bitcoin',
+        allowPaymentId: allowPaymentId,
+        selection: selection);
+
+void selectorTests() {
+  group('selector', () {
+    test('ignores records of other applications and unrelated text', () {
+      final result = selectWith([
+        'oa1:xmr recipient_address=monero;',
+        'oa1:xmrx recipient_address=monero;',
+        'v=spf1 -all',
+        'oa1:btc recipient_address=bitcoin;custom_1=value;tx_amount=99;',
+      ], application: 'btc');
+      expect(result.address, 'bitcoin');
+      expect(result.domain, 'alice.example');
+      expect(result.application, 'btc');
+      expect(result.record.fields['custom_1'], 'value');
+      expect(() => result.record.fields['tx_amount'] = '1',
+          throwsUnsupportedError);
+    });
+    test('ignores oversized records of other applications', () {
+      expect(
+          selectWith([
+            'oa1:btc ${'x' * 9000}',
+            'oa1:xmr recipient_address=valid;',
+          ]).address,
+          'valid');
+    });
+    test('payment IDs are rejected unless allowed', () {
+      const records = ['oa1:xmr recipient_address=valid; tx_payment_id=abc;'];
+      expect(() => selectWith(records),
+          throwsA(isA<OpenAliasUnsupportedFieldException>()));
+      expect(selectWith(records, allowPaymentId: true).record.paymentId, 'abc');
+      expect(
+          () => selectWith(
+              ['oa1:xmr recipient_address=valid; TX_Payment_ID=abc;'],
+              allowPaymentId: true),
+          throwsA(isA<OpenAliasInvalidRecordException>()));
+    });
+    for (final second in [
+      'oa1:xmr recipient_address=valid; tx_payment_id=bbb;',
+      'oa1:xmr recipient_address=valid; tx_payment_id=aaa; recipient_name=Bob;',
+      'oa1:xmr recipient_address=valid;',
+    ]) {
+      test('conflicting records for one address are ambiguous: $second', () {
+        expect(
+            () => selectWith([
+                  'oa1:xmr recipient_address=valid; tx_payment_id=aaa;',
+                  second,
+                ], allowPaymentId: true),
+            throwsA(isA<OpenAliasAmbiguousException>()));
+      });
+    }
+    test('duplicate identical records are unambiguous', () {
+      expect(
+          selectWith([
+            'oa1:xmr recipient_address=valid;',
+            'oa1:xmr recipient_address=valid;',
+          ]).address,
+          'valid');
+    });
+    test('first selection differs from the strict default', () {
+      const records = [
+        'oa1:xmr recipient_address=valid;',
+        'oa1:xmr recipient_address=second;'
+      ];
+      expect(selectWith(records, selection: OpenAliasSelection.first).address,
+          'valid');
+      expect(() => selectWith(records),
+          throwsA(isA<OpenAliasAmbiguousException>()));
+    });
+    test('rejects more than 64 records', () {
+      try {
+        selectWith(List.filled(65, 'oa1:xmr recipient_address=valid;'));
+        fail('expected an exception');
+      } on OpenAliasLimitExceededException catch (e) {
+        expect(e.maximum, 64);
+        expect(e.actual, 65);
+      }
+      expect(
+          selectWith(List.filled(64, 'oa1:xmr recipient_address=valid;'))
+              .address,
+          'valid');
+    });
+    test('no matching record', () {
+      expect(() => selectWith(['oa1:btc recipient_address=bitcoin;']),
+          throwsA(isA<OpenAliasNoRecordException>()));
+    });
+    test('rejects an invalid application name', () {
+      expect(
+          () => selectWith(const [], application: 'XMR'), throwsArgumentError);
     });
   });
 }

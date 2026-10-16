@@ -1,5 +1,3 @@
-import 'dart:convert';
-
 enum OpenAliasError {
   invalidName,
   invalidRecord,
@@ -9,7 +7,6 @@ enum OpenAliasError {
   unsupportedField,
   noRecord,
   ambiguous,
-  questionMismatch,
 }
 
 /// Every deliberately reported OpenAlias parsing, selection, or trust failure.
@@ -73,32 +70,6 @@ final class OpenAliasAmbiguousException extends OpenAliasException {
       : super(OpenAliasError.ambiguous, message);
 }
 
-final class OpenAliasQuestionMismatchException extends OpenAliasException {
-  const OpenAliasQuestionMismatchException(String message)
-      : super(OpenAliasError.questionMismatch, message);
-}
-
-/// A TXT answer whose DNS character-strings have already been joined.
-final class TxtAnswer {
-  final String question;
-  final List<List<int>> records;
-
-  const TxtAnswer({required this.question, required this.records});
-}
-
-/// Resolves TXT records for a normalized DNS name.
-abstract interface class TxtResolver {
-  Future<TxtAnswer> lookupTxt(String name);
-}
-
-/// A trusted injected port that performs local DNSSEC validation.
-///
-/// Implementations must return only locally authenticated answers and must
-/// throw for insecure, bogus, indeterminate, malformed, or unavailable
-/// validation. Supplying an implementation is the caller's trust decision;
-/// [TxtAnswer] is not an independently verifiable proof object.
-abstract interface class ValidatingTxtResolver implements TxtResolver {}
-
 final _label = RegExp(r'^[a-z0-9_](?:[a-z0-9_-]{0,61}[a-z0-9_])?$');
 final _tld = RegExp(r'^[a-z](?:[a-z0-9-]{0,61}[a-z0-9])?$');
 const _specialUseTlds = {
@@ -156,15 +127,13 @@ class OpenAliasRecord {
 class OpenAliasRecipient {
   final String domain;
   final String address;
-  final String? application;
-  final OpenAliasRecord? record;
-  final TxtAnswer? dns;
+  final String application;
+  final OpenAliasRecord record;
   const OpenAliasRecipient(
       {required this.domain,
       required this.address,
-      this.application,
-      this.record,
-      this.dns});
+      required this.application,
+      required this.record});
 }
 
 final _prefix = RegExp(r'oa1:([a-z0-9][a-z0-9_-]*)(?=[ \t]|$)');
@@ -349,7 +318,10 @@ bool _sameFields(OpenAliasRecord a, OpenAliasRecord b) =>
     a.fields.length == b.fields.length &&
     a.fields.entries.every((e) => b.fields[e.key] == e.value);
 
-/// Does not authenticate [records]; use [OpenAliasResolver] for DNS data.
+/// Selects the recipient from decoded TXT [records] for [domain].
+///
+/// Records of other applications are ignored. The caller is responsible for
+/// the origin of [records].
 OpenAliasRecipient selectOpenAliasRecipient(
     {required String domain,
     required List<String> records,
@@ -357,8 +329,7 @@ OpenAliasRecipient selectOpenAliasRecipient(
     required bool Function(String) validateAddress,
     OpenAliasFieldValidator? validateRecord,
     OpenAliasSelection selection = OpenAliasSelection.uniqueAddress,
-    bool allowPaymentId = false,
-    TxtAnswer? dns}) {
+    bool allowPaymentId = false}) {
   _checkApplication(application);
   if (records.length > 64) {
     throw OpenAliasLimitExceededException('Too many DNS records.',
@@ -405,65 +376,5 @@ OpenAliasRecipient selectOpenAliasRecipient(
       domain: domain,
       address: candidates.keys.single,
       application: application,
-      record: candidates.values.single,
-      dns: dns);
-}
-
-class OpenAliasResolver {
-  final ValidatingTxtResolver resolver;
-  final String application;
-  final bool Function(String) validateAddress;
-  final OpenAliasFieldValidator? validateRecord;
-  final OpenAliasSelection selection;
-  final bool allowPaymentId;
-  OpenAliasResolver(
-      {required this.resolver,
-      required this.application,
-      required this.validateAddress,
-      this.validateRecord,
-      this.selection = OpenAliasSelection.uniqueAddress,
-      this.allowPaymentId = false}) {
-    _checkApplication(application);
-  }
-
-  Future<OpenAliasRecipient> resolve(String input) async {
-    final domain = normalizeOpenAlias(input);
-    final result = await resolver.lookupTxt(domain);
-    if (result.question != domain) {
-      throw const OpenAliasQuestionMismatchException(
-          'The DNS result belongs to another alias.');
-    }
-    if (result.records.length > 64) {
-      throw OpenAliasLimitExceededException('Too many DNS records.',
-          maximum: 64, actual: result.records.length);
-    }
-    final prefix = ascii.encode('oa1:$application');
-    final records = <String>[];
-    for (final bytes in result.records) {
-      if (!_hasPrefix(bytes, prefix)) continue;
-      try {
-        records.add(utf8.decode(bytes));
-      } on FormatException {
-        throw const OpenAliasInvalidRecordException(
-            'The OpenAlias record is malformed.');
-      }
-    }
-    return selectOpenAliasRecipient(
-        domain: domain,
-        records: records,
-        application: application,
-        validateAddress: validateAddress,
-        validateRecord: validateRecord,
-        selection: selection,
-        allowPaymentId: allowPaymentId,
-        dns: result);
-  }
-}
-
-bool _hasPrefix(List<int> bytes, List<int> prefix) {
-  if (bytes.length < prefix.length) return false;
-  for (var i = 0; i < prefix.length; i++) {
-    if (bytes[i] != prefix[i]) return false;
-  }
-  return bytes.length == prefix.length || _blank(bytes[prefix.length]);
+      record: candidates.values.single);
 }
