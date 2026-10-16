@@ -13,4 +13,4 @@ jobs:
       - uses: dart-lang/setup-dart@6afc89df92d6eb3834022f73cd65adc8cdfcb92d
         with:
           sdk: ${{ matrix.sdk }}
-      - run: bash tool/check.sh
+      - run: dart tool/check.dart
