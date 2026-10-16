@@ -1,9 +1,14 @@
 import 'package:openalias/openalias.dart';
 
 void main() {
-  final record = parseOpenAliasRecord(
-    'oa1:example recipient_address=demo; recipient_name="Alice; Example";',
+  final recipient = selectOpenAliasRecipient(
+    domain: normalizeOpenAlias('Alice@Example.com'),
+    records: [
+      'oa1:xmr recipient_address=demo; recipient_name="Alice; Example";'
+    ],
+    application: 'xmr',
+    validateAddress: (address) => address == 'demo',
   );
-  print(record?.application);
-  print(record?.fields['recipient_name']);
+  print(recipient.address);
+  print(recipient.record.fields['recipient_name']);
 }

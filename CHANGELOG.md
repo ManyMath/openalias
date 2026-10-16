@@ -1,6 +1,4 @@
 ## 0.0.1
 
-- OpenAlias parsing and authenticated recipient selection with sealed, named
-  exceptions and typed error metadata.
-- Follow OpenAlias quoting and escape rules; reject payment IDs by default; tighten names.
-- Provide a dependency-free, trusted validating TXT resolver interface.
+- OpenAlias TXT record parser and recipient selector with a sealed exception
+  family.
