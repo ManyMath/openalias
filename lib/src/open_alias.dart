@@ -336,11 +336,17 @@ enum OpenAliasSelection { uniqueAddress, first }
 /// Extra record checks; throw to reject the record.
 typedef OpenAliasFieldValidator = void Function(OpenAliasRecord record);
 
-void _checkApplication(String application) {
+/// Whether [application] can follow `oa1:` in a record: lowercase letters,
+/// digits, `_` or `-`, not starting with `_` or `-`.
+bool isOpenAliasApplication(String application) {
   final units = application.codeUnits;
-  if (units.isEmpty ||
-      !_tagChar(units.first, first: true) ||
-      !units.every(_tagChar)) {
+  return units.isNotEmpty &&
+      _tagChar(units.first, first: true) &&
+      units.every(_tagChar);
+}
+
+void _checkApplication(String application) {
+  if (!isOpenAliasApplication(application)) {
     throw ArgumentError.value(application, 'application');
   }
 }
